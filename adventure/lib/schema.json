@@ -1,0 +1,69 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema",
+    "title" : "Adventure Schema for CSE 505 2023 Fall",
+    "type" : "object",
+    "properties": {
+        "rooms" : {
+            "type" : "array",
+            "items" : { "$ref" : "#/$defs/room" }
+        },
+        "items" : {
+            "type" : "array",
+            "items" : { "$ref" : "#/$defs/item" }
+        },
+        "start" : { "type" : "number" },
+        "starting_inventory" : { "type" : "array", "items" : { "type" : "number" }},
+        "item_locs" : {
+            "type" : "array",
+            "items" : {
+                "type" : "object",
+                "properties" : {
+                    "item_id" : { "type" : "number" },
+                    "room_id" : { "type" : "number" }
+                }
+            }
+        },
+        "winning_message" : {"type" : "string"}
+    },
+    "$defs" : {
+        "roomdesc" : {
+            "type" : "object", 
+            "properties" : {
+                "itemids" : {"type" : "array", "items" : {"type" : "number"}},
+                "desc" : {"type" : "string"}
+            }
+        },
+        "exit" : {
+            "type" : "object",
+            "properties" : {
+                "direction" : {"type" : "string"},
+                "room" : {"type" : "number"},
+                "to_unlock" : {"type" : "array", "items" : {"type" : "number"}}
+            }
+        },
+        "room" : {
+            "type" : "object",
+            "properties" : {
+                "id" : { "type" : "number" },
+                "descs" : {
+                    "type" : "array",
+                    "items" : {
+                        "$ref" : "#/$defs/roomdesc"
+                    }
+                },
+                "points" : {"type" : "number"},
+                "exits" : {"type" : "array", "items" : {"$ref" : "#/$defs/exit"}},
+                "to_drop" : {"type" : "array", "items" : {"type" : "number"}}
+            }
+        },
+        "item" : {
+            "type" : "object",
+            "properties" : {
+                "name" : { "type" : "string" },
+                "id" : { "type" : "number" },
+                "desc" : { "type" : "string" },
+                "points" : { "type" : "number" }
+            }
+        }
+    }
+}

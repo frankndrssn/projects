@@ -1,0 +1,16 @@
+{
+    "rooms" : [
+        {
+            "id" : 0,
+            "descs" : [{"itemids" : [], "desc" : "The only room in this adventure."}],
+            "points" : 0,
+            "exits" : [],
+            "to_drop" : []
+        }
+    ],
+    "items" : [],
+    "start" : 0,
+    "starting_inventory" : [],
+    "item_locs" : [],
+    "winning_message" : "You won!" 
+}

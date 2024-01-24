@@ -1,0 +1,978 @@
+\documentclass{homework}
+
+\usepackage[colorlinks,urlcolor=blue]{hyperref}
+\usepackage{minted}
+\usepackage{enumerate}
+\usepackage{mathpartir}
+\usepackage{pl-syntax}
+\usepackage{bold-extra}
+
+\title{Interpreters}
+\coursenumber{CSE 505}
+\coursename{Fundamentals of Programming Languages}
+\hwnumber{A5}
+
+%% Set up minted macros
+
+% You can use
+% \begin{ocamlcode}
+%   ... ocaml code ...
+% \end{ocamlcode}
+% to typeset ocaml code blocks
+% N.B.: The `\end{ocamlcode}` _must_ be on its own line!
+\newminted{ocaml}{}
+
+%you can use \ocaml{... ocaml code ...} for inline code
+\newmintinline[ocaml]{ocaml}{}
+
+\newmintedfile{ocaml}{}
+
+%% Proof Macros
+%
+% You can use the eqproof environment to typeset equality proofs
+%
+% Example:
+% \begin{eqproof}
+%   \prog{\ocaml{(f >> (g >> h)) x}}
+%   \eqby{computation}
+%   \prog{\ocaml{f ((g >> h) x)}}
+%   \eqby{computation}
+%   \prog{\ocaml{f (g (h x))}}
+% \end{eqproof}
+%
+% gives:
+%
+%   (f >> (g >> h)) x
+% = {computation}
+%   f ((g >> h) x)
+% = {computation}
+%   f (g (h x))
+%
+% This requires math mode
+
+\NewDocumentEnvironment{eqproof}{}{\begin{array}{l}}{\end{array}}
+\NewDocumentCommand{\prog}{m}{~~\text{#1}\\}
+\NewDocumentCommand{\eqby}{m}{= \{\text{#1}\}\\}
+
+
+\RenewDocumentCommand{\int}{}{\textsf{int}}
+\NewDocumentCommand{\bool}{}{\textsf{bool}}
+\NewDocumentCommand{\atom}{}{\textsf{atom}}
+\NewDocumentCommand{\lstty}{m}{(\textsf{list}\,#1)}
+\RenewDocumentCommand{\times}{m m}{(\ast\,#1\,#2)}
+\RenewDocumentCommand{\sum}{m m}{(\textsf{either}\,#1\,#2)}
+\NewDocumentCommand{\arr}{m m}{#1 \to #2}
+\NewDocumentCommand{\atomic}{m}{{}'#1}
+\NewDocumentCommand{\id}{}{\text{id}}
+\NewDocumentCommand{\true}{}{\textsf{true}}
+\NewDocumentCommand{\false}{}{\textsf{false}}
+\NewDocumentCommand{\eq}{}{\textsf{eq}}
+\NewDocumentCommand{\lam}{m m m m}{(\textsf{fun}\; (#1\;(#2) \mathrel{:} #3)\; #4)}
+\NewDocumentCommand{\lst}{m m}{{}'[#1](#2)}
+\NewDocumentCommand{\cons}{m m}{(\textsf{cons}\;#1\;#2)}
+\NewDocumentCommand{\matchlst}{m m m m m}{(\textsf{match}\,#1\,(#2)\,((#3\,#4)\,#5))}
+\NewDocumentCommand{\hd}{m}{(\textsf{hd}\,#1)}
+\NewDocumentCommand{\tl}{m}{(\textsf{tl}\,#1)}
+\NewDocumentCommand{\pr}{m m}{{}'(#1 \mathop{.} #2)}
+\NewDocumentCommand{\fst}{m}{(\textsf{fst}\,#1)}
+\NewDocumentCommand{\snd}{m}{(\textsf{snd}\,#1)}
+\NewDocumentCommand{\inl}{m m}{(\textsf{left}\;#1\;#2)}
+\NewDocumentCommand{\inr}{m m}{(\textsf{right}\;#2\;#1)}
+\NewDocumentCommand{\matchsum}{m m m m m}{(\textsf{case}\,#1\,((#2)\,#3)\,((#4)\,#5))}
+\NewDocumentCommand{\ifb}{m m m}{(\textsf{if}\;#1\;#2\;#3)}
+
+\NewDocumentCommand{\defun}{m m m m}{(\textsf{defun}\,(#1\,(#2) \mathrel{:} #3)\,#4)}
+\NewDocumentCommand{\define}{m m m}{(\textsf{def}\,(#1 \mathrel{:} #2)\,#3)}
+
+\NewDocumentCommand{\env}{}{\text{env}}
+
+\begin{document}
+\maketitle
+
+In this homework, you are acting as a language designer and implementer for a language called Ruse.
+Your job is to put the finishing touches on both the metatheory of Ruse (that is, theorems about Ruse itself, rather than any particular Ruse program) along with implementing the core functionality of a Ruse interpreter.
+This document contains the theoretical details of Ruse; you should start by reading it.
+You will also be modifying the file in order to add proofs of progress and preservation; these are the last remaining parts of the metatheory of Ruse to be done.
+
+\section{Ruse Syntax}
+\label{sec:syntax}
+
+The abstract syntax of Ruse is given below.
+This contains no syntactic sugar, though the Ruse parser we have provided supports some basic syntactic sugar.
+That sugar is documented in the README file accompanying this assignment.
+
+Ruse is based on the Scheme language (which itself is based on LISP), but there are several significant differences between Ruse and Scheme.
+First, Ruse is typed, whereas Scheme is untyped.
+In particular, this means that we require typing annotation in several places.
+Second, Ruse has been simplified in several ways.
+For instance, note that we require binary operations to be fully applied---for instance, $(+\;3)$ is not a program, whereas it would be a perfectly good Scheme program.
+(Those of you who are familiar with Scheme---and LISPs more broadly---may expect Ruse to have a macro system.
+However, another simplification is the lack of a macro system.
+We encourage you to try and implement a macro system on top of your Ruse implementation, however!)
+
+The syntax of Ruse programs and types can be found below:
+\begin{syntax}
+  \category[Types]{\tau, \sigma}
+    \alternative{\int}
+    \alternative{\bool}
+    \alternative{\atom}
+    \alternative{\times{\tau_1}{\tau_2}}
+    \alternative{\sum{\tau_1}{\tau_2}}
+    \alternative{\arr{\tau_1}{\tau_2}}
+    \alternative{\lstty{\tau}}
+  \abstractCategory[Identifier]{\id, x, y, \ldots}
+  \category[Expressions]{e}
+    \alternative{n}
+    \alternative{x}
+    \alternative{\atomic{\id}}\\
+    \alternative{(+\; e_1\; e_2)}
+    \alternative{(- \; e_1\; e_2)}
+    \alternative{(\ast \; e_1\; e_2)}\\
+    \alternative{(< \; e_1 \; e_2)}
+    \alternative{(= \; e_1 \; e_2)}
+    \alternative{(\eq \; e_1 \; e_2)}\\
+    \alternative{\true}
+    \alternative{\false}
+    \alternative{\ifb{e_1}{e_2}{e_3}}\\
+    \alternative{(e_1\; e_2)}
+    \alternative{\lam{f}{x : \tau}{\sigma}{e}}\\
+    \alternative{\lst{\tau}{e_1 \ldots e_n}}
+    \alternative{\cons{e_1}{e_2}}
+    \alternative{\matchlst{e_1}{e_2}{x}{y}{e_3}}\\
+    \alternative{\pr{e_1}{e_2}}
+    \alternative{\fst{e}}
+    \alternative{\snd{e}}\\
+    \alternative{\inl{e}{\tau}}
+    \alternative{\inr{e}{\tau}}
+    \alternative{\matchsum{e_1}{x}{e_2}{y}{e_3}}
+  \category[Values]{v}
+    \alternative{n}
+    \alternative{\atomic{\id}}
+    \alternative{\true}
+    \alternative{\false}
+    \alternative{\lam{f}{x : \tau}{\sigma}{e}}\\
+    \alternative{\lst{\tau}{v_1 \ldots v_n}}
+    \alternative{\pr{v_1}{v_2}}
+    \alternative{\inl{v}{\tau}}
+    \alternative{\inr{v}{\tau}}
+\end{syntax}
+
+The basic Ruse types are \int{}, \bool{}, and \atom.
+The \int{} and \bool{} types are similar to OCaml's versions of the same.
+The \int{} type has been somewhat simplified: the only possible operations are plus, minus, times, less-than, and equals.
+However, the \atom{} type is likely less familiar.
+For any identifier (i.e., valid variable) \id, $\atomic{\id}$ is a value of type \atom{}.
+The idea is that this represents some unstructured piece of data.
+The only operation available on atoms is \eq, which checks for equality.
+
+Functions are always recursive by default, unlike OCaml.
+A function value has the form $\lam{f}{x : \tau}{\sigma}{e}$.
+This is a function that calls itself recursively using the name $f$, with an argument $x$ of type $\tau$, and which returns a value of type $\sigma$.
+Function application is written $(e_1\; e_2)$.
+Note that functions always take exactly one argument.
+
+Ruse has pair types, not unlike OCaml's pair types.
+Note that we do not have e.g., triple types; those must be built from repeated pair types.
+We also do not have full variants; instead we only have \textsf{either} types.
+These have two constructors, \textsf{left} and \textsf{right}.
+While these might feel quite restrictive, any non-recursive variant can be built from these types.
+
+Finally, we have lists.
+In Ruse, a list of $n$ elements has the form $\lst{e_1\; \ldots\; e_n}$.
+If $n = 0$, then we get the empty list (called ``nil''), written $\lst{}$.
+While we do have \textsf{cons}, unlike in OCaml, $\cons{v_1}{v_2}$ is \emph{not} a value.
+Instead, \textsf{cons} is given semantics in terms of lists, as you will see in the semantics below.
+
+\subsection{Substitution}
+\label{sec:substitution}
+
+A \emph{substitution}~$\gamma$ (the lower case Greek letter ``gamma'')  is a partial function from variables to expressions.
+We write $[x \mapsto e_1, y \mapsto e_2, \ldots]$ for the substitution that maps $x$ to $e_1$, $y$ to $e_2$, and so on.
+We write $\gamma[\gamma']$ to mean the substitution that acts like $\gamma$ on any variable $x \notin\text{dom}(\gamma')$, but on $\gamma'$ on any $x \in \text{dom}(\gamma')$.
+The operation of substitution takes an expression and a substitution and returns a substitution.
+It is defined as follows:
+$$
+e[\gamma] = \left\{
+  \begin{array}{l l}
+    e & \text{if}~e = n, \atomic{\id}, \true, \mathrel{\text{or}} \false\\
+    \gamma(x) & \text{if}~e=x~\text{and}~x \in \text{dom}(\gamma)\\
+    x & \text{if}~e=x~\text{and}~x \notin \text{dom}(\gamma)\\
+    (\odot\; e_1[\gamma]\; e_2[\gamma]) & \text{if}~e=(\odot\; e_1\; e_2) \\[0.5em]
+    \ifb{(e_1[\gamma])}{(e_2[\gamma])}{(e_3[\gamma])} & \text{if}~e = \ifb{e_1}{e_2}{e_3}\\
+    (e_1[\gamma]\; e_2[\gamma]) & \text{if}~e=(e_1\; e_2) \\[0.5em]
+    \lam{g}{y : \tau}{\sigma}{e[\gamma[f \mapsto g, x \mapsto y]]} & \text{if}~e=\lam{f}{x : \tau}{e}~\text{where $g$ and $y$ are fresh}\\
+    \lst{\tau}{e_1[\gamma]\;\ldots\;e_n[\gamma]} & \text{if}~e=\lst{\tau}{e_1\;\ldots\;e_n}\\
+    \cons{e_1[\gamma]}{e_2[\gamma]} & \text{if}~e=\cons{e_1}{e_2}\\
+    \matchlst{(e_1[\gamma])}{(e_2[\gamma])}{w}{z}{e_3[\gamma[x \mapsto w, y \mapsto z]]} & \!\!\!\begin{array}{l}\text{if}~e=\matchlst{e_1}{e_2}{x}{y}{e_3}\\~~\text{where}~w,z~\text{are fresh}\end{array}\\
+    \pr{e_1[\gamma]}{e_2[\gamma]} & \text{if}~e=\pr{e_1}{e_2}\\
+    \fst{e[\gamma]} & \text{if}~e=\fst{e}\\
+    \snd{e[\gamma]} & \text{if}~e=\snd{e}\\
+    \inl{e[\gamma]}{\tau} & \text{if}~e=\inl{e}{\tau}\\
+    \inr{e[\gamma]}{\tau} & \text{if}~e=\inr{e}{\tau}\\
+    \matchsum{(e_1[\gamma])}{w}{e_2[\gamma[x \mapsto w]]}{z}{e_3[\gamma[y \mapsto z]]} & \!\!\!\begin{array}{l}\text{if}~e=\matchsum{e_1}{x}{e_2}{y}{e_3}\\~~\text{where}~w,z~\text{are fresh}\end{array}
+  \end{array}
+\right.
+$$
+This is a very complicated definition.
+You don't have to understand it fully!
+However, try to understand intuitively what it's doing; if you feel up to it, try to match the details to your intuition.
+
+\section{Type System}
+\label{sec:type-system}
+
+We present the type system for Ruse in terms of rules below.
+Remember that everything above the line is a premise, while the thing below the line is a conclusion.
+We call type environments $\Gamma$ (the Greek capital letter gamma).
+This is not only traditional, it allows us to separate them from environments in the environment-based semantics below.
+
+\begin{mathparpagebreakable}
+  \infer*[left=varT]{
+    \Gamma(x) = \tau
+  }{
+    \Gamma \vdash x : \tau
+  }\and
+  \infer*[left=intT]{ }{
+    \Gamma \vdash n : \int
+  } \and
+  \infer*[left=atomT]{ }{
+    \Gamma \vdash \atomic{\id} : \atom
+  } \and
+  \infer*[left=trueT]{ }{
+    \Gamma \vdash \true : \bool
+  } \and
+  \infer*[left=falseT]{ }{
+    \Gamma \vdash \false : \bool
+  }\\
+  \infer*[left=binopT]{
+    \Gamma \vdash e_1 : \int\\
+    \Gamma \vdash e_2 : \int\\
+    \odot \in \{+, -, \ast\}
+  }{
+    \Gamma \vdash (\odot\; e_1\; e_2) : \int
+  } \and
+  \infer*[left=intRelT]{
+    \Gamma \vdash e_1 : \int\\
+    \Gamma \vdash e_2 : \int\\
+    \odot \in \{\mathord{<}, \mathord{=}\}
+  }{
+    \Gamma \vdash (\odot\; e_1\; e_2) : \bool
+  }\and
+  \infer*[left=eqT]{
+    \Gamma \vdash e_1 : \atom\\
+    \Gamma \vdash e_2 : \atom
+  }{
+    \Gamma \vdash (\eq\; e_1\; e_2) \mathrel{:} \bool
+  }\\
+  \infer*[left=ifT]{
+    \Gamma \vdash e_1 : \bool\\
+    \Gamma \vdash e_2 : \tau\\
+    \Gamma \vdash e_3 : \tau
+  }{
+    \Gamma \vdash \ifb{e_1}{e_2}{e_3}
+    }\\
+  \infer*[left=appT]{
+    \Gamma \vdash e_1 : \tau \to \sigma\\
+    \Gamma \vdash e_2 : \tau
+  }{
+    \Gamma \vdash (e_1\; e_2) : \sigma
+  }\and
+  \infer*[left=funT]{
+    \Gamma[f \mapsto \tau \to \sigma, x \mapsto \tau] \vdash e : \sigma
+  }{
+    \Gamma \vdash \lam{f}{x : \tau}{\sigma}{e} : \tau \to \sigma
+  }\\
+  \infer*[left=lstT]{
+    \Gamma \vdash e_1 : \tau\\
+    \ldots\\
+    \Gamma \vdash e_n : \tau
+  }{
+    \Gamma \vdash \lst{\tau}{e_1\, \ldots\,e_n} : \lstty{\tau}
+  }\and
+  \infer*[left=consT]{
+    \Gamma \vdash e_1 : \tau\\
+    \Gamma \vdash e_2 : \lstty{\tau}
+  }{
+    \Gamma \vdash \cons{e_1}{e_2} : \lstty{\tau}
+  }\and
+  \infer*[left=matchListT]{
+    \Gamma \vdash e_1 : \lstty{\tau}\\
+    \Gamma \vdash e_2 : \sigma\\
+    \Gamma[x \mapsto \tau, y \mapsto \lstty{\tau}] \vdash e_3 : \sigma
+  }{
+    \Gamma \vdash \matchlst{e_1}{e_2}{x}{y}{e_3} : \sigma
+  }\\
+  \infer*[left=pairT]{
+    \Gamma \vdash e_1 : \tau\\
+    \Gamma \vdash e_2 : \sigma
+  }{
+    \Gamma \vdash \pr{e_1}{e_2} : \times{\tau_1}{\tau_2}
+  }\and
+  \infer*[left=fstT]{
+    \Gamma \vdash e : \times{\tau_1}{\tau_2}
+  }{
+    \Gamma \vdash \fst{e} : \tau_1
+  }\and
+  \infer*[left=sndT]{
+    \Gamma \vdash e : \times{\tau_1}{\tau_2}
+  }{
+    \Gamma \vdash \snd{e} : \tau_1
+  }\\
+  \infer*[left=leftT]{
+    \Gamma \vdash e : \tau
+  }{
+    \Gamma \vdash \inl{e}{\sigma} : \sum{\tau}{\sigma}
+  }\and
+  \infer*[left=rightT]{
+    \Gamma \vdash e : \sigma
+  }{
+    \Gamma \vdash \inr{e}{\tau} : \sum{\tau}{\sigma}
+  }\and
+  \infer*[left=matchEitherT]{
+    \Gamma \vdash e_1 : \sum{\tau}{\sigma}\\
+    \Gamma[x \mapsto \tau] \vdash e_2 : \rho\\
+    \Gamma[y\mapsto\sigma] \vdash e_3 : \rho
+  }{
+    \Gamma \vdash \matchsum{e_1}{x}{e_2}{y}{e_3} : \rho
+  }
+\end{mathparpagebreakable}
+
+\section{Small-Step Semantics}
+\label{sec:small-step-semantics}
+
+We present the semantics of Ruse in three different, but equivalent, ways.
+The first is the small-step semantics.
+This is what you will be using in the proofs you must do below.
+
+\begin{mathparpagebreakable}
+  \infer*[left=binSmall1]{\odot \in \{+, -, \ast, <, =, \eq, \textsf{cons}\}\\ e_{21} \to e_{22}}{(\odot\; e_{21}\; e_3) \to (\odot\; e_{22}\; e_3)}\and
+  \infer*[left=binSmall2]{\odot \in \{+, -, \ast, <, =, \eq, \textsf{cons}\}\\  e_{31} \to e_{32}}{(\odot\; v_1\; e_{31}) \to (\odot\; v_1\; e_{32})}\\
+  \infer*[left=binopSmall]{\odot \in \{+, -, \ast\}\\ n \odot m = k}{(\odot\; n\; m) \to k}\and
+  \infer*[left=binrelSmall]{\odot \in \{<, =, \eq\}\\ n \odot m}{(\odot\; n\; m) \to \true} \and
+  \infer*[left=nBinrelSmall]{\odot \in \{<, =, \eq\}\\ n \mathrel{\not\mathrel{\odot}} m}{(\odot\; n\; m) \to \false}\\
+  \infer*[left=appSmall1]{e_{11} \to e_{12}}{(e_{11}\;e_2) \to (e_{12}\;e_2)}\and
+  \infer*[left=appSmall2]{e_{21} \to e_{22}}{(v_1\; e_{21}) \to (v_1\; e_{22})}\and
+  \infer*[left=funSmall]{ }{(\lam{f}{x : \tau}{\sigma}{e}\; v) \to e[f \mapsto \lam{f}{x : \tau}{\sigma}{e}, x \mapsto v]}\\
+  \infer*[left=ifSmall]{e_{11} \to e_{12}}{\ifb{e_{11}}{e_2}{e_3} \to \ifb{e_{12}}{e_2}{e_3}}\and
+  \infer*[left=trueSmall]{ }{\ifb{\true}{e_2}{e_3} \to e_2}\and
+  \infer*[left=falseSmall]{ }{\ifb{\false}{e_2}{e_3} \to e_3}\\
+  \infer*[left=lstSmall]{e_{(i+1)1} \to e_{(i+1)2}}{\lst{\tau}{v_1\ldots v_{i}\;e_{(i+1)1}\;e_{i+2}\ldots e_n} \to \lst{\tau}{v_1\ldots v_i\;e_{(i+1)2}\;e_{i+1}\ldots e_n}}\\
+  \infer*[left=consSmall]{ }{\cons{v_0}{\lst{v_1\;\ldots\;v_n}} \to \lst{v_0\;v_1\;\ldots\;v_n}}\and
+  \infer*[left=matchListSmall]{e_{11} \to e_{12}}{\matchlst{e_{11}}{e_2}{x}{y}{e_3} \to \matchlst{e_{12}}{e_2}{x}{y}{e_3}}\and
+  \infer*[left=nilSmall]{ }{\matchlst{\lst{\tau}{}}{e_1}{x}{y}{e_2} \to e_1}\and
+  \infer*[left=consSmall]{ }{\matchlst{\lst{\tau}{v_1\;v_2 \ldots v_n}}{e_1}{x}{y}{e_2} \to e_2[x \mapsto v_1, y \mapsto \lst{\tau}{v_2 \ldots v_n}]}\\
+  \infer*[left=pairSmall1]{e_{11} \to e_{12}}{\pr{e_{11}}{e_2} \to \pr{e_{12}}{e_2}}\and
+  \infer*[left=pairSmall2]{e_2 \to e_{21}}{\pr{v_1}{e_{21}} \to \pr{v_1}{e_{22}}}\and
+  \infer*[left=fstSmall1]{e_1 \to e_2}{\fst{e_1} \to \fst{e_2}} \and
+  \infer*[left=sndSmall1]{e_1 \to e_2}{\snd{e_1} \to \snd{e_2}} \and
+  \infer*[left=fstSmall2]{ }{\fst{\pr{v_1}{v_2}} \to v_1} \and
+  \infer*[left=sndSmall2]{ }{\snd{\pr{v_1}{v_2}} \to v_2} \\
+  \infer*[left=leftSmall1]{e_1 \to e_2}{\inl{e_1}{\tau} \to \inl{e_2}{\tau}}\and
+  \infer*[left=rightSmall1]{e_1 \to e_2}{\inr{e_1}{\tau} \to \inr{e_2}{\tau}}\and
+  \infer*[left=matchEitherSmall]{e_{11} \to e_{12}}{\matchsum{e_{11}}{x}{e_2}{y}{e_3} \to \matchsum{e_{12}}{x}{e_2}{y}{e_3}}\and
+  \infer*[left=leftSmall2]{ }{\matchsum{\inl{v}}{x}{e_2}{y}{e_3} \to e_2[x \mapsto v]}\and
+  \infer*[left=rightSmall2]{ }{\matchsum{\inr{v}}{x}{e_2}{y}{e_3} \to e_3[y \mapsto v]}\\
+\end{mathparpagebreakable}
+
+\section{Big-Step Semantics}
+\label{sec:big-step-semantics}
+
+The second of our semantics is the big-step semantics.
+You do not need to use these semantics in your work.
+However, they form a useful bridge between the small-step semantics (above), which you will use in proofs, and the environment-based semantics (below), which you will implement.
+
+\begin{mathparpagebreakable}
+  \infer*[left=valBig]{ }{v \Rightarrow v}\and
+  \infer*[left=binopBig]{
+    e_1 \Rightarrow n\\
+    e_2 \Rightarrow m\\
+    n \odot m = k\\
+    \odot \in \{+,-,\ast\}
+  }{
+    (\odot\; e_1\; e_2) \Rightarrow k
+  }\and
+  \infer*[left=binrelBig]{
+    e_1 \Rightarrow n\\
+    e_2 \Rightarrow m\\
+    n \odot m\\
+    \odot \in \{\mathord{<}, \mathord{=}, \eq\}
+  }{
+    (\odot\; e_2\; e_3) \Rightarrow \true
+  }\and
+  \infer*[left=nBinrelBig]{
+    e_1 \Rightarrow \mathord{<}\\
+    e_2 \Rightarrow n\\
+    e_3 \Rightarrow m\\
+    n \not\mathrel{\odot} m\\
+    \odot \in \{\mathord{<}, \mathord{=}, \eq\}
+  }{
+    (e_1\; e_2\; e_3) \Rightarrow \false
+  }\\
+  \infer*[left=funBig]{
+    e_1 \Rightarrow \lam{f}{x : \tau}{\sigma}{e}\\
+    e_2 \Rightarrow v_1\\
+    e[f \mapsto \lam{f}{x : \tau}{\sigma}{e}, x \mapsto v_1] \Rightarrow v_2
+  }{
+    (e_1\; e_2)  \Rightarrow v_2
+  }\\
+  \infer*[left=trueBig]{
+    e_1 \Rightarrow \true\\
+    e_2 \Rightarrow v
+  }{
+    \ifb{e_1}{e_2}{e_3} \Rightarrow v
+  }\and
+  \infer*[left=falseBig]{
+    e_1 \Rightarrow \false\\
+    e_3 \Rightarrow v
+  }{
+    \ifb{e_1}{e_2}{e_3} \Rightarrow v
+  }\\
+  \infer*[left=lstBig]{
+    e_1 \Rightarrow v_1\\
+    \cdots\\
+    e_n \Rightarrow v_n
+  }{
+    \lst{\tau}{e_1 \ldots e_n} \Rightarrow \lst{\tau}{v_1 \ldots v_n}
+  } \and
+  \infer*[left=consBig]{
+    e_1 \Rightarrow v_0\\
+    e_2 \Rightarrow \lst{\tau}{v_1\; \ldots\; v_n}
+  }{
+    \cons{e_1}{e_2} \Rightarrow \lst{\tau}{v_0\; v_1\; \ldots\; v_n}
+  }\and
+  \infer*[left=nilBig]{
+    e_1 \Rightarrow \lst{\tau}{}\\
+    e_2 \Rightarrow v
+  }{
+    \matchlst{e_1}{e_2}{x}{y}{e_3} \Rightarrow v
+  }\and
+  \infer*[left=nemptyBig]{
+    e_1 \Rightarrow \lst{\tau}{v_1\;v_2 \ldots v_n}\\
+    e_3[x \mapsto v_1, y \mapsto \lst{\tau}{v_2 \ldots v_n}] \Rightarrow v
+  }{
+    \matchlst{e_1}{e_2}{x}{y}{e_3} \Rightarrow v
+  }\\
+  \infer*[left=pairBig]{
+    e_1 \Rightarrow v_1\\
+    e_2 \Rightarrow v_2
+  }{
+    \pr{e_1}{e_2} \Rightarrow \pr{v_1}{v_2}
+  }\and
+  \infer*[left=fstBig]{
+    e \Rightarrow \pr{v_1}{v_2}
+  }{
+    \fst{e} \Rightarrow v_1
+  }\and
+  \infer*[left=sndBig]{
+    e \Rightarrow \pr{v_1}{v_2}
+  }{
+    \snd{e} \Rightarrow v_2
+  }\\
+  \infer*[left=leftBig1]{
+    e \Rightarrow v
+  }{
+    \inl{e} \Rightarrow \inl{v}
+  }\and
+  \infer*[left=rightBig1]{
+    e \Rightarrow v
+  }{
+    \inr{e} \Rightarrow \inr{v}
+  }\and
+  \infer*[left=leftBig2]{
+    e_1 \Rightarrow \inl{v_1}{\tau}\\
+    e_2[x \mapsto v_1] \Rightarrow v_2
+  }{
+    \matchsum{e_1}{x}{e_2}{y}{e_3} \Rightarrow v_2
+  }\and
+  \infer*[left=rightBig2]{
+    e_1 \Rightarrow \inr{v_1}{\tau}\\
+    e_3[y \mapsto v_1] \Rightarrow v_2
+  }{
+    \matchsum{e_1}{x}{e_2}{y}{e_3} \Rightarrow v_2
+  }\\
+\end{mathparpagebreakable}
+
+\section{Environment-Based Semantics}
+
+The environment-based semantics, below, provide a more performant basis for implementing Ruse.
+These are what you will be implementing.
+However, unlike in the previous semantics, we need to change the values to include \emph{closures}, which represent a function with a captured environment.
+The closure $\langle\env, f, x, e \rangle$ represents a closure with captured environment $\env$, which calls itself via $f$, with argument $x$, and body $e$.
+
+\begin{syntax}
+  \category[Values]{v}
+    \alternative{n}
+    \alternative{\atomic{\id}}
+    \alternative{\true}
+    \alternative{\false}\\
+    \alternative{\langle\env, f, x, e\rangle}
+    \alternative{\lst{\tau}{v_1 \ldots v_n}}
+    \alternative{\pr{v_1}{v_2}}
+    \alternative{\inl{v}{\tau}}
+    \alternative{\inr{v}{\tau}}
+\end{syntax}
+
+\begin{mathparpagebreakable}
+  \infer*[left=varEnv]{ }{\env, x \Rightarrow \env(x)}\and
+  \infer*[left=valEnv]{ }{\env, v \Rightarrow v}\and
+  \infer*[left=funEnv]{ }{\env, \lam{f}{x : \tau}{\sigma}{e} \Rightarrow \langle \env, f, x, e \rangle} \and
+  \infer*[left=binopEnv]{
+    \env, e_1 \Rightarrow n\\
+    \env, e_2 \Rightarrow m\\
+    n \odot m = k\\
+    \odot \in \{+, -, \ast\}
+  }{
+    \env, (\odot\; e_1\; e_2) \Rightarrow k
+  }\and
+  \infer*[left=binrelEnv]{
+    \env, e_1 \Rightarrow n\\
+    \env, e_2 \Rightarrow m\\
+    n \odot m\\
+    \odot \in \{\mathord{<}, \mathord{=}, \eq\}
+  }{
+    \env, (\odot\; e_1\; e_2) \Rightarrow \true
+  }\\
+  \infer*[left=cloEnv]{
+    \env_1, e_1 \Rightarrow \langle\env_2, f, x, e\rangle\\
+    \env_1, e_2 \Rightarrow v_1\\
+    \env_2[f \mapsto \langle \env_2, f, x, e\rangle, x \mapsto v_1], e \Rightarrow v_2
+  }{
+    (e_1\; e_2)  \Rightarrow v_2
+  }\\
+  \infer*[left=trueEnv]{
+    \env, e_1 \Rightarrow \true\\
+    \env, e_2 \Rightarrow v
+  }{
+    \env, \ifb{e_1}{e_2}{e_3} \Rightarrow v
+  }\and
+  \infer*[left=falseEnv]{
+    \env, e_1 \Rightarrow \false\\
+    \env, e_3 \Rightarrow v
+  }{
+    \env, \ifb{e_1}{e_2}{e_3} \Rightarrow v
+  }\and
+  \infer*[left=lstEnv]{
+    \env, e_1 \Rightarrow v_1\\
+    \cdots\\
+    \env, e_n \Rightarrow v_n
+  }{
+    \env, \lst{\tau}{e_1 \ldots e_n} \Rightarrow \lst{\tau}{v_1 \ldots v_n}
+  } \and
+  \infer*[left=consEnv]{
+    \env, e_1 \Rightarrow v_0\\
+    \env, e_2 \Rightarrow \lst{\tau}{v_1\; \ldots\; v_n}
+  }{
+    \env, \cons{e_1}{e_2} \Rightarrow \lst{\tau}{v_0\; v_1\; \ldots\; v_n}
+  }\and
+  \infer*[left=nilEnv]{
+    \env, e_1 \Rightarrow \lst{\tau}{}\\
+    \env, e_2 \Rightarrow v
+  }{
+    \env, \matchlst{e_1}{e_2}{x}{y}{e_3} \Rightarrow v
+  }\and
+  \infer*[left=nemptyEnv]{
+    \env, e_1 \Rightarrow \lst{\tau}{v_1\;v_2 \ldots v_n}\\
+    \env[x \mapsto v_1, y \mapsto \lst{\tau}{v_2 \ldots v_n}], e_3 \Rightarrow v
+  }{
+    \env, \matchlst{e_1}{e_2}{x}{y}{e_3} \Rightarrow v
+  }\\
+  \infer*[left=pairEnv]{
+    \env, e_1 \Rightarrow v_1\\
+    \env, e_2 \Rightarrow v_2
+  }{
+    \env, \pr{e_1}{e_2} \Rightarrow \pr{v_1}{v_2}
+  }\and
+  \infer*[left=fstEnv]{
+    \env, e \Rightarrow \pr{v_1}{v_2}
+  }{
+    \env, \fst{e} \Rightarrow v_1
+  }\and
+  \infer*[left=sndEnv]{
+    \env, e \Rightarrow \pr{v_1}{v_2}
+  }{
+    \env, \snd{e} \Rightarrow v_2
+  }\\
+  \infer*[left=leftEnv1]{
+    \env, e \Rightarrow v
+  }{
+    \env, \inl{e} \Rightarrow \inl{v}
+  }\and
+  \infer*[left=rightEnv1]{
+    \env, e \Rightarrow v
+  }{
+    \env, \inr{e} \Rightarrow \inr{v}
+  }\and
+  \infer*[left=leftEnv2]{
+    \env, e_1 \Rightarrow \inl{v_1}{\tau}\\
+    \env[x \mapsto v_1], e_2 \Rightarrow v_2
+  }{
+    \env, \matchsum{e_1}{x}{e_2}{y}{e_3} \Rightarrow v_2
+  }\and
+  \infer*[left=rightEnv2]{
+    \env, e_1 \Rightarrow \inr{v_1}{\tau}\\
+    \env[y \mapsto v_1], e_3 \Rightarrow v_2
+  }{
+    \env, \matchsum{e_1}{x}{e_2}{y}{e_3} \Rightarrow v_2
+  }\\
+  
+\end{mathparpagebreakable}
+
+\section{Metatheory}
+\label{sec:metatheory}
+
+There are three parts to the metatheory of Ruse.
+First, we show that substitution plays nicely with the type system.
+Second, we show that the big-step semantics and the small-step semantics are equivalent.
+We do not provide a similar proof for the environment-based semantics, but we hope that you agree that the equivalence of the big-step and environment-based semantics is clear.
+Third, you will provide a proof of type soundness.
+
+The purpose of providing the first two parts is threefold.
+First, we want to convince you that all of the theorems we have proven are true.
+Second, we want to give you access to these theorems for your proof of type soundness.
+Finally, we want you to have an example of the type of writing we expect in this assignment.
+
+You do not have to study or understand any of the proofs we have provided you in any detail.
+However, by reading them, we hope you will find the task of crafting your own proofs much easier.
+
+\subsection{Substitution}
+We write $\Gamma \vdash \gamma \dashv \Delta$ if, for every $x : \tau \in \Gamma$, $\Delta \vdash \gamma(x) : \Gamma(x)$.
+That is, if $\gamma$ gives us replacement for everything in $\Gamma$ that is well-typed under $\Delta$.
+The notation is supposed to evoke the idea that $\gamma$ is somehow transforming $\Gamma$ into $\Delta$, which is substantiated via the theorem below:
+\begin{thm}
+  \label{thm:subst}
+  If $\Gamma \vdash e : \tau$ and $\Gamma \vdash \gamma \dashv \Delta$, then $\Delta \vdash e[\gamma] : \tau$.
+\end{thm}
+\begin{proof}
+  By induction on the derivation of $\Gamma \vdash e : \tau$.
+
+  \vspace{0.5em}\noindent\textbf{Case \textsc{varT}:}
+  This comes directly from the definition of $\Gamma \vdash \gamma \dashv \Delta$.
+
+  \vspace{0.5em}\noindent\textbf{Cases \textsc{intT}, \textsc{atomT}, \textsc{trueT}, \textsc{falseT}:}
+  In these cases $e[\gamma] = e$, but also $e$ is well-typed in \emph{any} context, including~$\Delta$.
+  
+  \vspace{0.5em}\noindent\textbf{Cases \textsc{binopT}, \textsc{intRelT}, and \textsc{eqT}:}
+  In these cases, $e = (\odot\; e_1\; e_2)$, where $\Gamma \vdash e_1 : \tau_1$ and $\Gamma \vdash e_2 : \tau_2$.
+  No matter what $\odot$ is, $e[\gamma] = (\odot\; e_1[\gamma]\; e_2[\gamma])$, and by the inductive hypothesis $\Delta \vdash e_1 : \tau_1$ and $\Delta \vdash e_2 : \tau_2$, so applying the relevant rule (\textsc{binopT}, \textsc{intRelT}, or \textsc{eqT}) gives us the desired result.
+  
+  \vspace{0.5em}\noindent\textbf{Case \textsc{ifT}:}
+  By the inductive hypotheses, $\Delta \vdash e_1[\gamma] : \bool$, $\Delta \vdash e_2[\gamma] : \tau$, and $\Delta \vdash e_3[\gamma] : \tau$.
+  Thus, we can immediately apply \textsc{ifT} again to get $\Delta \vdash \ifb{(e_1[\gamma])}{(e_2[\gamma])}{(e_3[\gamma])} = \ifb{e_1}{e_2}{e_3}[\gamma] : \tau$, as desired.
+  
+  \vspace{0.5em}\noindent\textbf{Cases \textsc{lstT}, \textsc{consT}, \textsc{pairT}, \textsc{fstT}, \textsc{sndT}, \textsc{leftT}, and \textsc{rightT}:}
+  Similarly to the case for  \textsc{ifT} above, these rules only rely on premises of the form $\Gamma \vdash e_2 : \sigma$.
+  Thus, we can apply the inductive hypotheses before invoking the appropriate rule, just as we did in the \textsc{ifT} case.
+
+  \vspace{0.5em}\noindent\textbf{Case \textsc{appT}:}
+  Let $\gamma' = \gamma[f \mapsto g, x \mapsto y]$ and note that $\Gamma[f \mapsto \tau \to \sigma, x  \mapsto \tau] \vdash \gamma' \dashv \Delta[g \mapsto \tau \to \sigma, y \mapsto \tau]$.
+  To see this, note that $\gamma'(f) = g$ and so $$\Delta[g \mapsto \tau \to \sigma, y \mapsto \tau](\gamma'(f)) = \Delta[g \mapsto \tau \to \sigma, y \mapsto \tau](g) = \tau \to \sigma$$ with similar reasoning for $x$.
+  Moreover, let $z$ be a variable other than $f$ and $x$.
+  Then $\gamma'(z) = \gamma(z)$, and $\Gamma[f \mapsto \tau \to \sigma, x  \mapsto \tau](z) = \Gamma(z)$.
+  Since $g$ and $y$ are fresh, $$\Delta[g \mapsto \tau \to \sigma, y \mapsto \tau] \vdash \gamma'(z) : \Gamma[f\mapsto \tau\to \sigma, x \mapsto \tau](z) \iff \Delta \vdash \gamma(z) : \Gamma(z)$$ which is true since $\Gamma \vdash \gamma \dashv \Delta$.
+
+  With this observation in hand, we can apply the inductive hypothesis on $\Gamma[f \mapsto \tau \to \sigma, x  \mapsto \tau] \vdash e : \sigma$.
+  This gives us that $\Delta[g \mapsto \tau \to \sigma, y \mapsto \tau] \vdash e[\gamma'] : \sigma$.
+  But then applying \textsc{funT} to this gives us that $$\Delta \vdash \lam{g}{y : \tau}{\sigma}{e[\gamma']} : \tau \to \sigma$$ which is exactly what we wanted.
+
+  \vspace{0.5em}\noindent\textbf{Cases \textsc{matchListT} and \textsc{matchEitherT}:}
+  Via a mixture of the reasoning in the \textsc{ifT} and \textsc{appT} cases above.  
+\end{proof}
+
+\subsection{The Big-Step and Small-Step Semantics are Equivalent}
+
+\begin{thm}
+  If $e \Rightarrow v$, then $e \to^\ast v$.
+\end{thm}
+\begin{proof}
+  We proceed by induction on the derivation of $e \Rightarrow v$.
+
+  \vspace{0.5em}\noindent\textbf{Case \textsc{valBig}:}
+  Since $\to^\ast$ is reflexive, $v \to^\ast v$ for any $v$.
+
+  \vspace{0.5em}\noindent\textbf{Case \textsc{binopBig}:}
+  We know that $e = (\odot\; e_1\; e_2)$.
+  Since $e_1 \Rightarrow n$ and $e_2 \Rightarrow m$, we have $e_1 \to^\ast n$  and $e_2 \to^\ast m$ by inductive hypothesis.
+  Thus, by \textsc{binSmall1} and \textsc{binSmall2}, we get
+  $$(\odot\; e_1\; e_2) \to^\ast (\odot\; n\; e_2) \to^\ast (\odot\; n\; m)$$
+  We also know that $n \odot m = v$, so by \textsc{binopSmall} we get $(\odot\; n\; m) \to v$.
+  Combining this with the above, we get $e \to^\ast v$, as desired.
+
+  \vspace{0.5em}\noindent\textbf{Cases \textsc{binrelBig} and \textsc{nBinrelBig}:}
+  We know that $e = (\odot\; e_1\; e_2)$.
+  Since $e_1 \Rightarrow n$ and $e_2 \Rightarrow m$, we have $e_1 \to^\ast n$  and $e_2 \to^\ast m$ by inductive hypothesis.
+  Thus, by \textsc{binSmall1} and \textsc{binSmall2}, we get
+  $$(\odot\; e_1\; e_2) \to^\ast (\odot\; n\; e_2) \to^\ast (\odot\; n\; m)$$
+  We also know that $n \odot m$ (or $n \not\mathrel{\odot} m$ in the case of \textsc{nBinrelBig}), so applying \textsc{binrelSmall} (respectively \textsc{nBinrelSmall}), we get that $(\odot\; n\; m) \to \true$ (resp. $(\odot\; n\; m) \to \false$).
+  Combining this with the above, we get the desired result.
+  
+  \vspace{0.5em}\noindent\textbf{Case \textsc{funBig}:}
+  Using reasoning similar to the last two cases, we get
+  $$(e_1\; e_2) \to^\ast (\lam{f}{x : \tau}{\sigma}{e}\; e_2) \to^\ast (\lam{f}{x : \tau}{\sigma}{e}\; v_1)$$
+  We can then apply \textsc{funSmall} to get $(\lam{f}{x : \tau}{\sigma}{e}\; v_1) \to e [f \mapsto \lam{f}{x : \tau}{\sigma}{e}, x \mapsto v_1]$.
+  But we know by inductive hypothesis that $e [f \mapsto \lam{f}{x : \tau}{\sigma}{e}, x \mapsto v_1] \to^\ast v_2$.
+  Combining all of these together ,we get $e \to^\ast v_2$ as desired.
+
+  \vspace{0.5em}\noindent\textbf{Case \textsc{lstBig}:}
+  By the inductive hypothesis, $e_i \Rightarrow v_i$, and so repeated application of \textsc{lstSmall} gives us
+  $$\lst{\tau}{e_1 \ldots e_n} \to^\ast \lst{\tau}{v_1\; e_2 \ldots e_n} \to^\ast \lst{\tau}{v_1\; v_2\; e_3 \ldots e_n} \to^\ast \cdots \to^\ast \lst{\tau}{v_1 \ldots v_n}$$
+  as desired.
+
+  \vspace{0.5em}\noindent\textbf{Case \textsc{consBig}:}
+  We know that $e = \cons{e_1}{e_2}$ where $e_1 \Rightarrow v_0$ and $e_2 \Rightarrow \lst{\tau}{v_1\; \ldots\; v_n}$.
+  But then we have
+  $$\cons{e_1}{e_2} \to^\ast \cons{v_0}{e_2} \to^\ast \cons{v_0}{\lst{\tau}{v_1\; \ldots\; v_n}}$$
+  Applying \textsc{consSmall}, we get $\cons{v_0}{\lst{\tau}{v_1\; \ldots\; v_n}} \to \lst{\tau}{v_0\; v_1\; \ldots\; v_n}$.
+  Putting it all together, we get $\cons{e_1}{e_2} \to^\ast \lst{\tau}{v_0\; v_1\; \ldots\; v_n}$ as desired.
+
+  \vspace{0.5em}\noindent\textbf{Case \textsc{nilBig}:}
+  By the inductive hypothesis, $e_1 \Rightarrow \lst{\tau}{}$ and so $e_1 \to^\ast \lst{\tau}{}$.
+  Thus, by repeatedly applying \textsc{matchListSmall}, we get $\matchlst{e_1}{e_2}{x}{y}{e_3} \to^\ast \matchlst{\lst{\tau}{}}{e_2}{x}{y}{e_3}$.
+  Applying \textsc{nilSmall}, we get $\matchlst{\lst{\tau}{}}{e_2}{x}{y}{e_3} \to e_2$.
+  Applying the other inductive hypothesis, $e_2 \to^\ast v$.
+  Again, stitching everything together using the transitivity of $\to^\ast$, we get $\matchlst{e_1}{e_2}{x}{y}{e_3} \to^\ast v$ as desired.
+
+  \vspace{0.5em}\noindent\textbf{Case \textsc{nemptyBig}:}
+  By similar reasoning to the above $\matchlst{e_1}{e_2}{x}{y}{e_3} \to^\ast \matchlst{\lst{\tau}{v_1\; \ldots\; v_n}}{e_2}{x}{y}{e_3}$.
+  Applying \textsc{nemptySmall}, we get $\matchlst{\lst{\tau}{v_1\; \ldots\; v_n}}{e_2}{x}{y}{e_3} \to e_3[x \mapsto v_1, y \mapsto \lst{\tau}{v_2\; \ldots\; v_n}]$.
+  Further applying the second IH, we get $e_3[x \mapsto v_1, y \mapsto \lst{\tau}{v_2\; \ldots\; v_n}] \to^\ast v$, as desired.
+
+  \vspace{0.5em}\noindent\textbf{Case \textsc{pairBig}:}
+  Applying the first inductive hypothesis and repeatedly using \textsc{pairSmall1}, then applying the second inductive hypothesis with \textsc{pairSmall2}, we get
+  $$
+  \pr{e_1}{e_2} \to^\ast \pr{v_1}{e_2} \to^\ast \pr{v_1}{v_2}
+  $$
+  exactly as desired.
+
+  \vspace{0.5em}\noindent\textbf{Case \textsc{fstBig}:}
+  Applying the inductive hypothesis, repeatedly using \textsc{fstSmall1}, then using \textsc{fstSmall2} give us
+  $$
+  \fst{e} \to^\ast \fst{\pr{v_1}{v_2}} \to v_1
+  $$
+  The case for \textsc{sndBig} is similar, and so can be skipped.
+
+  \vspace{0.5em}\noindent\textbf{Case \textsc{leftBig1}:}
+  Applying the inductive hypothesis and repeatedly using \textsc{leftSmall1} immediately gives the result.
+  The case for \textsc{rightBig1} is similar, and can be skipped.
+
+  \vspace{0.5em}\noindent\textbf{Case \textsc{leftBig2}:}
+  Applying the first inductive hypothesis, repeatedly using \textsc{matchEitherSmall}, and then using \textsc{leftSmall2}, and finally the second inductive hypothesis, gives the following:
+  $$\matchsum{e_1}{x}{e_2}{y}{e_3} \to^\ast \matchsum{\inl{v_1}}{x}{e_2}{y}{e_3} \to e_2[x \mapsto v_1] \to^\ast v_2$$
+  The case for \textsc{rightBig2} is similar, and can be skipped.
+\end{proof}
+
+\begin{lem}
+  If $e_1 \to e_2$ and $e_2 \Rightarrow v$, then $e_1 \Rightarrow v$.
+  \label{lem:step_small_big}
+\end{lem}
+\begin{proof}
+  By induction on the derivation of $e_1 \to e_2$.
+
+  \vspace{0.5em}\noindent\textbf{Case \textsc{binSmall1}:}
+  We know $e_1 = (\odot\; e_{11} \; e_2)$, and we know that $e_{11} \to e_{12}$ where $e_2 = (\odot\; e_{12} \; e_2)$.
+  Furthermore, the only possible derivations for $e_2 \Rightarrow v$ are via \textsc{binopBig}, \textsc{binrelBig}, or \textsc{nBinrelBig}.
+  WLOG, assume that it is derived via \textsc{binopBig}; the cases for \textsc{binrelBig} and \textsc{nBinrelBig} are similar.
+  In this case, we know that there are $n$ and $m$ such that  $e_{12} \Rightarrow n$, $e_2 \Rightarrow m$, and $n \odot m = v$.
+  But then by the inductive hypothesis, $e_{11} \Rightarrow n$, and so applying \textsc{binopBig} gives us $e_1 \Rightarrow v$ as desired.
+
+  \vspace{0.5em}\noindent\textbf{Cases \textsc{binSmall2}, \textsc{appSmall1}, and \textsc{appSmall2}:}
+  By almost the exact same reasoning as for the case \textsc{binSmall1} above.
+
+  \vspace{0.5em}\noindent\textbf{Cases \textsc{binopSmall}, \textsc{binrelSmall}, \textsc{nBinrelSmall}, and \textsc{consSmall}:}
+  Assume, WLOG, that we are in the \textsc{binopSmall} case; the other two cases are extremely similar.
+  We know that $e_1= (\odot\; n\; m)$ and $n \odot m = v$.
+  Furthermore, since $n$ and $m$ are values, $n \Rightarrow n$ and $m \Rightarrow m$ by \textsc{valBig}.
+  But then applying \textsc{binopBig} gives us $e_1 \Rightarrow v$ as desired.
+  
+  \vspace{0.5em}\noindent\textbf{Case \textsc{funSmall}:}
+  We know that $e_1 = (\lam{f}{x : \tau}{\sigma}{e}\; v_1)$ and $e_2 = e[f \mapsto \lam{f}{x : \tau}{\sigma}{e}, x \mapsto v_1]$.
+  Since they are values, we know that $\lam{f}{x : \tau}{\sigma}{e} \Rightarrow \lam{f}{x : \tau}{\sigma}{e}$ and $v_1 \Rightarrow v_1$.
+  Thus, we can combine these with the hypothesis that $e_2 \Rightarrow v$ via \textsc{funBig} to get $e_1 \Rightarrow v$ as desired.  
+
+  \vspace{0.5em}\noindent\textbf{Cases \textsc{lstSmall}:}
+  The only possible way to evaluate a list in the big-step semantics is with \textsc{lstBig}.
+  However, this evaluates every position, and we've taken a step in one position.
+  Thus, we can use the inductive hypothesis and \textsc{lstBig} to get what we want.
+  This is very similar to the \textsc{ifSmall}, \textsc{binSmall1}, and \textsc{binSmall2} cases above.
+  
+  \vspace{0.5em}\noindent\textbf{Case \textsc{ifSmall}, \textsc{matchListSmall}, \textsc{fstSmall1}, \textsc{sndSmall1}, \textsc{matchEtiherSmall}, \textsc{pairSmall1}, \textsc{pairSmall2}, \textsc{leftSmall1}, and \textsc{rightSmall1}:}
+  In each of these cases, we take a step in some internal expression.
+  Because the big-step semantics also steps this internal expression, we can recombine everything to get the desired result.
+  This is very similar to the \textsc{binSmall1} case above.
+
+  \vspace{0.5em}\noindent\textbf{Cases \textsc{trueSmall} and \textsc{falseSmall}:}
+  Assume, WLOG, that we are in the \textsc{trueSmall} case; the \textsc{falseSmall} case is extremely similar.
+  By \textsc{valBig}, $\true \Rightarrow \true$, and by hypothesis $e_2 \Rightarrow v$.
+  Thus, by \textsc{trueBig}, $\ifb{\true}{e_2}{e_3} \Rightarrow v$ as desired.
+
+  \vspace{0.5em}\noindent\textbf{Cases \textsc{nilSmall}, \textsc{nemptySmall}, \textsc{fstSmall2}, \textsc{sndSmall2}, \textsc{leftSmall2}, and \textsc{rightSmall2}:}
+  By reasoning almost exactly like that in the case of \textsc{trueSmall} above.
+\end{proof}
+
+\begin{thm}
+  If $e \to^\ast v$, then $e \Rightarrow v$.
+\end{thm}
+\begin{proof}
+  By induction on the number of steps in the first derivation.
+
+  \vspace{0.5em}\noindent\textbf{Case 0:}
+  If there are zero steps, then $e = v$, and so $v \Rightarrow v$ by \textsc{valBig}.
+
+  \vspace{0.5em}\noindent\textbf{Case $n + 1$:}
+  $$e = e_1 \to e_2 \to^\ast v$$
+  By the inductive hypothesis, $e_2 \Rightarrow v$.
+  But then by Lemma~\ref{lem:step_small_big}, $e_1 \Rightarrow v$.
+\end{proof}
+
+\subsection{Inversion Lemmas}
+In order to complete the homework problems, you may use any of these lemmas without proof.
+
+\begin{lem}[Bool Inversion]
+  \label{lem:bool-inv}
+  If $\Gamma \vdash v : \bool$ is a value, then either $v = \true$ or $\Gamma = \false$.
+\end{lem}
+\begin{lem}[Int Inversion]
+  \label{lem:int-inv}
+  If $\Gamma \vdash v : \int$ is a value, then $v$ is an integer literal.
+\end{lem}
+\begin{lem}[Atomic Inversion]
+  \label{lem:atomic-inv}
+  If $\Gamma \vdash v : \atom$ is a value, then $v = \atomic{\id}$ for some identifier $\id$. 
+\end{lem}\begin{lem}[Function Inversion]
+  \label{lem:fun-inv}
+  If $\Gamma \vdash v : \tau_1 \to \tau_2$ is a value, then $v = \lam{f}{x : \tau}{\sigma}{e}$ for some $f$, $x$, $\tau$, $\sigma$, and $e$.
+\end{lem}
+\begin{lem}[List Inversion]
+  \label{lem:list-inv}
+  If $\Gamma \vdash v : \lstty{\tau}$ is a value, then $v = \lst{\tau}{v_1, \ldots, v_n}$ with $n \geq 0$, where all of the $v_i$ are values.
+  If $n = 0$, then the list is empty.
+\end{lem}
+\begin{lem}[Times Inversion]
+  \label{lem:times-inv}
+  If $\Gamma \vdash v : \times{\tau_1}{\tau_2}$, then there exist $v_1$ and $v_2$ such that $v = \pr{v_1}{v_2}$,
+  $\Gamma \vdash v_1 : \tau_1$, and $\Gamma \vdash v_2 : \tau_2$.
+\end{lem}
+\begin{lem}[Either Inversion]
+  \label{lem:either-inv}
+  If $\Gamma \vdash v_1 : \sum{\tau_1}{\tau_2}$, then there exist $v_2$ such that either $v_1 = \inl{v_2}{\tau_2}$ and $\Gamma \vdash v_1 : \tau_1$,
+  or $v = \inr{v_2}{\tau_1}$ and $\Gamma \vdash v_2 : \tau_2$.
+\end{lem}
+
+\subsection{Homework Problems}
+
+Prove the following two theorems below.
+You may use any of the results above.\\
+\textbf{Hint:} Use induction on the typing derivation.
+See Theorem~\ref{thm:subst} for an example.
+
+\begin{thm}[Progress]
+  If $\vdash e : \tau$ then either $e$ is a value, or there is an $e'$ such that $e \to e'$.
+\end{thm}
+\begin{proof}
+  We proceed by induction on the typing derivation of $\vdash e : \tau$.
+  \begin{enumerate}
+  \item Case: \textsc{varT}.
+    This case is not applicable since the typing context is empty.
+  \item Cases: \textsc{intT}, \textsc{atomT}, \textsc{trueT}, \textsc{falseT}, \textsc{funT}.
+    In these cases, the expression $e$ is already a value.
+  \item\label{case:binopT} Case: \textsc{binopT}.
+    By the induction hypothesis, $e_{1}$ (resp., $e_{2}$) is either a value or it steps.
+    \begin{enumerate}
+    \item If $e_{1}$ is a value, apply the corresponding inversion lemma and then apply \textsc{binSmall2} (if $e_{2}$ steps) or \textsc{binSmall} (if $e_{2}$ is a value).
+    \item If $e_{1}$ steps, then apply \textsc{binSmall1}.
+    \end{enumerate}
+  \item Cases: \textsc{intRelT}, \textsc{eqT}.
+    These cases are analogous to \ref{case:binopT}, except we apply \textsc{binrelSmall} or \textsc{nBinrelSmall}.
+  \item Case: \textsc{ifT}.
+    By the induction hypothesis, $e_{1}$ is either a value or it takes a step.
+    \begin{enumerate}
+    \item If $e_{1}$ is a value, then by Lemma \ref{lem:bool-inv} $e_{1}$ is either $\true$ or $\false$.
+      Apply \textsc{trueSmall} or \textsc{falseSmall}.
+    \item If $e_{1}$ steps, then apply \textsc{ifSmall}.
+    \end{enumerate}
+  \item Case: \textsc{appT}.
+    By the induction hypothesis, there are two possibilities for each expression.
+    If both expressions are values, then by Lemma \ref{lem:fun-inv} $e_{1}$ is a lambda, so apply \textsc{funSmall}.
+    In the other 3 cases, if $e_{1}$ steps then apply \textsc{appSmall1} else apply \textsc{appSmall2}.
+  \item Case: \textsc{lstT}.
+    By the induction hypothesis, each list element is either a value or it steps.
+    If every list element is a value, then the resulting list is a value.
+    If some list element steps, choose the least index $i$ such that $e_{i}$ steps and apply \textsc{lstSmall}.
+  \item Case: \textsc{consT}.
+    By the induction hypothesis, there are two possibilities for each expression.
+    If either expression steps, apply \textsc{binSmall1} or \textsc{binSmall2}.
+    If both expressions are values, then by Lemma \ref{lem:list-inv} $e_{1}$ has the form $(v_{1},\ldots,v_{n})$.
+    Now apply \textsc{consSmall}.
+  \item Cases: \textsc{matchListT}, \textsc{matchEitherT}.
+    By the induction hypothesis, a subexpression is either a value or it steps.
+    In the former case, apply Lemma \ref{lem:list-inv} (resp., Lemma \ref{lem:either-inv}) to get $(v_{1},\ldots,v_{n})$ (resp., $\inl{v}$ or $\inr{v}$).
+    Now apply \textsc{nilSmall} or \textsc{consSmall} (resp., \textsc{leftSmall2} or \textsc{rightSmall2}).
+    In the latter case, apply \textsc{matchListSmall} (resp., \textsc{matchEitherSmall}).
+  \item Case: \textsc{pairT}.
+    By the induction hypothesis, a subexpression is either a value or it steps.
+    If both expressions are value, then the entire expression is a value.
+    If either one steps, apply \textsc{pairSmall1} or \textsc{pairSmall2}.
+  \item Cases: \textsc{fstT}, \textsc{sndT}.
+    By the induction hypothesis, a subexpression is either a value or it steps.
+    If $e$ is a value, then by Lemma \ref{lem:times-inv} $e = \pr{v_{1}}{v_{2}}$.
+    Now apply \textsc{fstSmall2} (resp., \textsc{sndSmall2}).
+    If $e$ steps then apply \textsc{fstSmall1} (resp., \textsc{sndSmall1}).
+  \item Cases: \textsc{leftT}, \textsc{rightT}.
+    By the induction hypothesis, a subexpression is either a value or it steps.
+    If $e$ is a value, then the entire expression is a value.
+    If $e$ steps, apply \textsc{leftSmall1} (resp., \textsc{rightSmall1}).
+  \end{enumerate}
+\end{proof}
+
+\begin{thm}[Preservation]
+  If $\Gamma \vdash e_1 : \tau$ and $e_1 \to e_2$, then $\Gamma \vdash e_2 : \tau$.
+\end{thm}
+\begin{proof}
+  We proceed by induction on the typing derivation of $\Gamma \vdash e_{1} : \tau$.
+  \begin{enumerate}
+  \item Cases: \textsc{varT}, \textsc{intT}, \textsc{atomT}, \textsc{trueT}, \textsc{falseT}, \textsc{funT}.
+    None of these cases apply since $e_{1}$ cannot step.
+  \item\label{case:binopT} Case: \textsc{binopT}.
+    $e_{1}$ can take a step by \textsc{binSmall1}, \textsc{binSmall2}, or \textsc{binopSmall}.
+    In the former two cases, one of the subexpressions of $e_{1}$ steps.
+    By the induction hypothesis, the type of that subexpression is preserved.
+    Thus, the whole expression can be typed as $\int$.
+    In the latter case, both subexpressions are values of type $\int$, so the entire expression can be typed as $\int$.
+  \item Cases: \textsc{intRelT}, \textsc{eqT}, \textsc{consT}.
+    Analogous to \ref{case:binopT}.
+  \item Case: \textsc{ifT}.
+    There are 3 possible cases: \textsc{ifSmall}, \textsc{trueSmall}, and \textsc{falseSmall}.
+    The latter two cases clearly result in a term of type $\tau$.
+    In the former case, the induction hypothesis states that $e_{11}$'s type is preserved under reduction.
+    Thus, the entire expression can still be typed as $\tau$.
+  \item Case: \textsc{appT}.
+    There are three cases: \textsc{appSmall1}, \textsc{appSmall2}, and \textsc{funSmall}.
+    Subject reduction in the first two cases is just a consequence of the induction hypothesis, and for the latter case, apply Theorem \ref{thm:subst}.
+  \item Case: \textsc{lstT}.
+    The only possible reduction is through \textsc{lstSmall}.
+    Subject reduction is again a consequence of the induction hypothesis.
+  \item\label{case:matchListT} Case: \textsc{matchListT}.
+    The possible reductions are \textsc{matchListSmall}, \textsc{nilSmall}, and \textsc{consSmall} (resp., \textsc{matchEitherSmall}, \textsc{leftSmall2}, and \textsc{rightSmall2}).
+    The first case is a consequence of the induction hypothesis.
+    The second case is trivial because the resulting expression already has type $\sigma$.
+    The last case is a consequence of Theorem \ref{thm:subst}.
+  \item Case: \textsc{pairT}.
+    There are two possible reductions: \textsc{pairSmall1} and \textsc{pairSmall2}.
+    Subject reduction in both cases is a consequence of the induction hypothesis.
+  \item Cases: \textsc{fstT}, \textsc{sndT}.
+    The two possible reductions are \textsc{fstSmall1} and \textsc{fstSmall2} (resp., \textsc{sndSmall1} and \textsc{sndSmall2}).
+    The former case is a consequence of the induction hypothesis.
+    The latter case is immediate from the typing of the subexpressions.
+  \item Cases: \textsc{leftT}, \textsc{rightT}.
+    The only reduction is \textsc{leftSmall1} (resp., \textsc{rightSmall1}).
+    Subject reduction is a consequence of the induction hypothesis.
+  \item Case: \textsc{matchEitherT}.
+    Analogous to \ref{case:matchListT}.
+  \end{enumerate}
+\end{proof}
+
+\end{document}
+
+%%% Local Variables:
+%%% mode: latex
+%%% TeX-master: t
+%%% TeX-command-extra-options: "-shell-escape"
+%%% End:

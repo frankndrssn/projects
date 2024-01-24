@@ -1,0 +1,4 @@
+(tests
+ (names test_main)
+ (modules test_main test_data test_engine)
+ (libraries ounit2 qcheck search))

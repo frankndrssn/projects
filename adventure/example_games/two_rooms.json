@@ -1,0 +1,45 @@
+{
+    "rooms" : [
+        {
+            "id" : 0,
+            "descs" : [
+                {
+                    "itemids" : [],
+                    "desc" : "The first room in this adventure."
+                }
+            ],
+            "points" : 0,
+            "exits" : [
+                {
+                    "direction" : "other",
+                    "room" : 1,
+                    "to_unlock" : []
+                }
+            ],
+            "to_drop" : []
+        },
+        {
+            "id" : 1,
+            "descs" : [
+                {
+                    "itemids" : [],
+                    "desc" : "The second room in this adventure."
+                }
+            ],
+            "points" : 1,
+            "exits" : [
+                {
+                    "direction" : "first",
+                    "room" : 0,
+                    "to_unlock" : []
+                }
+            ],
+            "to_drop" : []
+        }
+    ],
+    "items" : [],
+    "start" : 0,
+    "starting_inventory" : [],
+    "item_locs" : [],
+    "winning_message" : "You win the two-room adventure! Thanks for playing."
+}

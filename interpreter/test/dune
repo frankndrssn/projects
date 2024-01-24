@@ -1,0 +1,4 @@
+(test
+ (name A5)
+ (deps (glob_files_rec ../example/*.ruse))
+ (libraries Ruse ounit2))

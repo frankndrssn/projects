@@ -1,0 +1,6 @@
+:def plus (fun (f (x : int) : (-> int int)) (fun (g (y : int) : int) (+ x y)))
+:def minus (fun (f (x : int) : (-> int int)) (fun (g (y : int) : int) (- x y)))
+:def times (fun (f (x : int) : (-> int int)) (fun (g (y : int) : int) (* x y)))
+:def lt (fun (f (x : int) : (-> int bool)) (fun (g (y : int) : bool) (< x y)))
+:def eql (fun (f (x : int) : (-> int bool)) (fun (g (y : int) : bool) (= x y)))
+:def equal (fun (f (x : atom) : (-> atom bool)) (fun (g (y : atom) : bool) (eq x y)))

@@ -1,0 +1,98 @@
+{
+    "rooms" : [
+        {
+            "id" : 0,
+            "descs" : [
+                {
+                    "itemids" : [0, 1],
+                    "desc" : "You're back in the room you started in. The gems in your hands start to glow and vibrate. It's as if they want to be placed in the slots on the altar in front of you."
+                },
+                {
+                    "itemids" : [],
+                    "desc" : "You find yourself in a small room. There is an altar in the middle with two slots, one square and one circle. A closed door reads \"exit\". Two open doors lead to two rooms, each seemingly empty except for a shine in the middle of the floor."
+                }
+            ],
+            "points": 0,
+            "exits" : [
+                {"direction" : "onward", "room": 1, "to_unlock" : []},
+                {"direction" : "back", "room" : 2, "to_unlock" : []}
+            ],
+            "to_drop" : [0,1]
+        },
+        {
+            "id" : 1,
+            "descs" : [
+                {
+                    "itemids" : [0,1],
+                    "desc": "This is where you found the circular gem. There are two doors: one to the room with an altar, and another to the room where you found the square gem."
+                },
+                {
+                    "itemids" : [0],
+                    "desc" : "This is where you found the circular gem. There are two doors: one to the room with an altar, and another to a room with a square gem sitting on the floor."
+                },
+                {
+                    "itemids" : [1],
+                    "desc" : "In front of you lays a small circular gem. There are two doors: one to the room with an altar, and another to a room with a square gem sitting on the floor."
+                },
+                {
+                    "itemids" : [],
+                    "desc" : "In front of you lays a small circular gem. There are two doors: one to the room with an altar, and another to a room with a square gem sitting on the floor."    
+                }
+            ],
+            "points" : 0,
+            "exits" : [
+                {"direction": "back", "room" : 0, "to_unlock" : []},
+                {"direction": "onward", "room": 2, "to_unlock" : []}
+            ],
+            "to_drop" : []
+        },
+        {
+            "id" : 2,
+            "descs" : [
+                {
+                    "itemids" : [0,1],
+                    "desc": "This is where you found the square gem. There are two doors: one to the room with an altar, and another to the room where you found the circular gem."
+                },
+                {
+                    "itemids" : [1],
+                    "desc" : "This is where you found the square gem. There are two doors: one to the room with an altar, and another to a room with a circular gem sitting on the floor."
+                },
+                {
+                    "itemids" : [0],
+                    "desc" : "In front of you lays a small square gem. There are two doors: one to the room with an altar, and another to a room where you found the circular gem."
+                },
+                {
+                    "itemids" : [],
+                    "desc" : "In front of you lays a small square gem. There are two doors: one to the room with an altar, and another to a room with a circular gem sitting on the floor."    
+                }
+            ],
+            "points" : 0,
+            "exits" : [
+                {"direction" : "altar", "room": 0, "to_unlock" : []}, 
+                {"direction" : "back", "room" : 1, "to_unlock" : []}
+            ],
+            "to_drop" : []
+        }
+    ],
+    "items" :[
+        {
+            "name" : "Circular Gem",
+            "id" : 0,
+            "desc" : "A small circular gem. It looks like it would fit into the altar in the first room.",
+            "points" : 50
+        },
+        {
+            "name" : "Square Gem",
+            "id" : 1,
+            "desc" : "A small square gem. It looks like it would fit into the altar in the first room.",
+            "points" : 50
+        }
+    ],
+    "start" : 0,
+    "starting_inventory" : [],
+    "item_locs" : [
+        {"item_id" : 0, "room_id" : 1},
+        {"item_id" : 1, "room_id" : 2}
+    ],
+   "winning_message" : "As you place the second gem in the altar, the room rumbles as the closed door opens. You step outside and breathe in the fresh air. You still don't know how you got there, but you managed to escape."
+}

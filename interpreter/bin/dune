@@ -1,0 +1,4 @@
+(executable
+ (public_name A5)
+ (name main)
+ (libraries Ruse menhirLib))

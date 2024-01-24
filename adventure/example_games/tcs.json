@@ -1,0 +1,74 @@
+{
+    "rooms" : [
+        {
+            "id" : 0,
+            "descs" : [{"itemids" : [], "desc" : "center"}],
+            "points" : 1,
+            "exits" : [
+                {"direction" : "left", "room" : 2, "to_unlock" : [0,1]},
+                {"direction" : "right", "room" : 4, "to_unlock" : []}
+            ],
+            "to_drop" : [0,1,2]
+        },
+        {
+            "id" : 1,
+            "descs" : [{"itemids" : [], "desc" : "north"}],
+            "points" : 1,
+            "exits" : [
+                {"direction" : "next room", "room" : 0, "to_unlock" : []}
+            ],
+            "to_drop" : []
+        },
+        {
+            "id" : 2,
+            "descs" : [
+                {"itemids" : [0,1,2], "desc" : "west"},
+                {"itemids" : [], "desc" : "ha you're stuck"}
+            ],
+            "points" : 1,
+            "exits" : [{"direction" : "next room", "room" : 3, "to_unlock" : [0,1,2]}],
+            "to_drop" : []
+        },
+        {
+            "id" : 3,
+            "descs" : [{"itemids" : [], "desc" : "south"}],
+            "points" : 1,
+            "exits" : [{"direction" : "next room", "room" : 0, "to_unlock" : []}],
+            "to_drop" : []
+        },
+        {
+            "id" : 4,
+            "descs" : [{"itemids" : [], "desc" : "east"}],
+            "points" : 1,
+            "exits" : [{"direction" : "next room", "room" : 1, "to_unlock" : []}],
+            "to_drop" : []
+        }
+    ],
+    "items" : [
+        {
+            "name" : "item A",
+            "id" : 0,
+            "desc" : "an item",
+            "points" : 1
+        },
+        {
+            "name" : "item B",
+            "id" : 1,
+            "desc" : "another item",
+            "points" : 1
+        },
+        {
+            "name" : "item C",
+            "id" : 2,
+            "desc" : "yet another item",
+            "points" : 1
+        }
+    ],
+    "start" : 0,
+    "starting_inventory" : [0],
+    "item_locs" : [
+        {"item_id" : 1, "room_id" : 1},
+        {"item_id" : 2, "room_id" : 2}
+    ],
+    "winning_message" : "win msg." 
+}

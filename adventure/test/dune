@@ -1,0 +1,5 @@
+(test
+ (name test_state)
+ (modules test_state)
+ (deps (glob_files_rec ../example_games/*.json))
+ (libraries gameengine ounit2 qcheck))

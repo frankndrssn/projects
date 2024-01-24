@@ -1,0 +1,9 @@
+*~
+_build/*
+*.a
+*.cma
+*.cmi
+*.cmx
+*.cmxa
+*.cmxs
+*.cmt

@@ -1,0 +1,6 @@
+(library
+ (name gameengine)
+ (modules state command)
+ (flags (:standard -warn-error -A))
+ (libraries yojson str)
+ (preprocess (pps ppx_monad)))
